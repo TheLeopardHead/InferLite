@@ -50,7 +50,7 @@ class RotaryEmbedding(nn.Module):
         """
         # Check if sequence length exceeds maximum position encoding length
         if seq_len > self.max_position_embeddings:
-            logger.warning(f"Requested sequence length ({seq_len}) exceeds maximum position encoding length ({self.max_position_embeddings}), will be truncated [rotary_embedding.py:49]")
+            logger.warning(f"Requested sequence length ({seq_len}) exceeds maximum position encoding length ({self.max_position_embeddings}), will be truncated")
             seq_len = self.max_position_embeddings
         
         # Ensure returned encoding length matches requested sequence length
@@ -97,7 +97,7 @@ class RotaryEmbedding(nn.Module):
                     cos = new_cos
                     sin = new_sin
             
-            logger.debug(f"Returning position encoding: cos.shape={cos.shape}, sin.shape={sin.shape}, seq_len={seq_len} [rotary_embedding.py:55]")
+            logger.debug(f"Returning position encoding: cos.shape={cos.shape}, sin.shape={sin.shape}, seq_len={seq_len}")
             return (cos, sin)
         except Exception as e:
             logger.error(f"Error getting position encoding: {e}")
