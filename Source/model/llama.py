@@ -78,7 +78,7 @@ class FusedAttention(nn.Module):
             # Ensure cos and sin shapes are compatible with q and k
             # Check the third dimension (sequence length)
             if cos.size(2) != seq_len:
-                logger.warning(f"Position encoding sequence length mismatch: cos.size(2)={cos.size(2)}, seq_len={seq_len}, adjusting [llama.py:74]")
+                logger.warning(f"Position encoding sequence length mismatch: cos.size(2)={cos.size(2)}, seq_len={seq_len}")
                 # If position encoding sequence length is greater than input sequence length, truncate
                 if cos.size(2) > seq_len:
                     cos = cos[:, :, :seq_len, :]
@@ -99,7 +99,7 @@ class FusedAttention(nn.Module):
                         new_sin[:, :, orig_len:, :] = sin[:, :, -1:, :]
                     cos = new_cos
                     sin = new_sin
-                logger.debug(f"Position encoding shape after sequence length adjustment: cos.shape={cos.shape}, sin.shape={sin.shape} [llama.py:91]")
+                logger.debug(f"Position encoding shape after sequence length adjustment: cos.shape={cos.shape}, sin.shape={sin.shape}")
             
             # Ensure batch size matches
             if cos.size(0) != batch_size and cos.size(0) == 1:
@@ -381,7 +381,7 @@ class LlamaModel(nn.Module):
     def forward(self, input_ids, position_ids=None, attention_mask=None, inputs_embeds=None):
         # Ensure model is in inference mode
         if self.training:
-            logger.warning(f"Model is currently in training mode, but this is an inference framework. Automatically switching to inference mode [llama.py:222]")
+            logger.warning(f"Model is currently in training mode, but this is an inference framework. Automatically switching to inference mode")
             self.eval()
         
         # Get input embeddings
@@ -390,7 +390,7 @@ class LlamaModel(nn.Module):
         
         hidden_states = inputs_embeds
         batch_size, seq_len = hidden_states.shape[:2]
-        logger.debug(f"Model forward propagation: batch_size={batch_size}, seq_len={seq_len} [llama.py:227]")
+        logger.debug(f"Model forward propagation: batch_size={batch_size}, seq_len={seq_len}")
         
         # Prepare position encodings
         if position_ids is None:
@@ -400,7 +400,7 @@ class LlamaModel(nn.Module):
         try:
             # Get rotary position encodings
             cos, sin = self.rotary_emb.forward(hidden_states, seq_len)
-            logger.debug(f"Getting rotary position encodings: cos.shape={cos.shape}, sin.shape={sin.shape} [llama.py:235]")
+            logger.debug(f"Getting rotary position encodings: cos.shape={cos.shape}, sin.shape={sin.shape}")
             
             # Ensure position encoding sequence length matches input sequence length
             if cos.size(2) != seq_len:
@@ -492,20 +492,20 @@ class LlamaModel(nn.Module):
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
             # Convert mask to additive mask (-inf for masked positions)
             attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min
-            logger.debug(f"Applying attention mask: shape={attention_mask.shape} [llama.py:242]")
+            logger.debug(f"Applying attention mask: shape={attention_mask.shape}")
         
         # Apply all layers
         for i, layer in enumerate(self.layers):
-            logger.debug(f"Processing layer {i+1}/{len(self.layers)}, inference mode: {not self.training} [llama.py:246]")
+            logger.debug(f"Processing layer {i+1}/{len(self.layers)}, inference mode: {not self.training}")
             hidden_states = layer(hidden_states, position_embeddings, attention_mask)
             if i % 8 == 0:  # Record every 8 layers, to avoid too much logging
-                logger.debug(f"Completed processing layer {i+1}/{len(self.layers)} [llama.py:249]")
+                logger.debug(f"Completed processing layer {i+1}/{len(self.layers)}")
         
         # Apply final layer normalization
         hidden_states = self.norm(hidden_states)
         
         # Calculate language model head
         logits = self.lm_head(hidden_states)
-        logger.debug(f"Generating logits: shape={logits.shape}, inference mode: {not self.training} [llama.py:256]")
+        logger.debug(f"Generating logits: shape={logits.shape}, inference mode: {not self.training}")
         
         return logits
