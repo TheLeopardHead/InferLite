@@ -7,24 +7,25 @@ from transformers import AutoTokenizer
 logger = logging.getLogger(__name__)
 
 class Tokenizer:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, force_download: bool = False):
         """
         Initialize tokenizer
         Args:
             model_path: Model or tokenizer path (can be a Hugging Face model ID or local path)
+            force_download: If True, always try to download from Hugging Face even if path exists
         """
-        if os.path.exists(model_path):
-            # If it's a directory path, try to load the tokenizer from the directory
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            logger.info(f"Loaded tokenizer from local path: {model_path}")
-        else:
-            # Otherwise try to load from Hugging Face
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        try:
+            if os.path.exists(model_path) and not force_download:
+                # 确认是本地路径，加载本地模型
+                self.tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+                logger.info(f"Loaded tokenizer from local path: {model_path}")
+            else:
+                # 明确表示从 Hugging Face 下载
+                self.tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=False)
                 logger.info(f"Loaded tokenizer from Hugging Face: {model_path}")
-            except Exception as e:
-                logger.error(f"Unable to load tokenizer: {e}")
-                raise ValueError(f"Unable to load tokenizer: {e}")
+        except Exception as e:
+            logger.error(f"Unable to load tokenizer: {e}")
+            raise ValueError(f"Unable to load tokenizer: {e}")
         
         # Get special token IDs
         self.bos_token_id = self.tokenizer.bos_token_id
