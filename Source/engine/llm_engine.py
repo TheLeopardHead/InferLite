@@ -135,7 +135,7 @@ class LLMEngine(BaseEngine):
         # Ensure model is in inference mode
         self.model.eval()
         logger.info("Model loading completed")
-        logger.info(f"Model set to inference mode (model.training={self.model.training}) [llm_engine.py:137]")
+        logger.info(f"Model set to inference mode (model.training={self.model.training})")
     
     @torch.no_grad()
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -149,10 +149,10 @@ class LLMEngine(BaseEngine):
         """
         # Ensure model is in inference mode
         if self.model.training:
-            logger.warning(f"Model unexpectedly in training mode, resetting to inference mode [llm_engine.py:150]")
+            logger.warning(f"Model unexpectedly in training mode, resetting to inference mode")
             self.model.eval()
             
-        logger.debug(f"Executing forward pass (model.training={self.model.training}) [llm_engine.py:153]")
+        logger.debug(f"Executing forward pass (model.training={self.model.training})")
         batch_size, seq_len = input_ids.shape
         position_ids = torch.arange(seq_len, device=self.device).unsqueeze(0).expand(batch_size, -1)
         
@@ -186,7 +186,7 @@ class LLMEngine(BaseEngine):
         """
         # Ensure model is in inference mode
         if self.model.training:
-            logger.warning(f"Model unexpectedly in training mode, resetting to inference mode [llm_engine.py:180]")
+            logger.warning(f"Model unexpectedly in training mode, resetting to inference mode")
             self.model.eval()
             
         logger.info(f"Starting text generation, parameters: max_length={max_length}, temperature={temperature}, top_p={top_p}, top_k={top_k}, repetition_penalty={repetition_penalty}, do_sample={do_sample}")
