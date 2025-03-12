@@ -7,6 +7,7 @@ from .base_engine import BaseEngine
 from ..model.llama import LlamaModel
 from ..model.model_config import LlamaConfig
 from ..tokenizer import Tokenizer
+from ..sampler import Sampler, SamplerFactory, RepetitionPenaltySampler
 
 # Create module-level logger
 logger = logging.getLogger(__name__)
@@ -165,22 +166,14 @@ class LLMEngine(BaseEngine):
     
     def generate(self, 
                  prompt: str, 
-                 max_length: int = 100, 
-                 temperature: float = 0.7, 
-                 top_p: float = 0.9,
-                 top_k: int = 0,
-                 repetition_penalty: float = 1.0,
-                 do_sample: bool = True) -> str:
+                 sampler: Sampler,
+                 max_length: int = 100) -> str:
         """
         Generate text
         Args:
             prompt: Input prompt
+            sampler: Sampler instance for token generation
             max_length: Maximum generation length
-            temperature: Temperature parameter
-            top_p: Nucleus sampling parameter
-            top_k: Top-k sampling parameter
-            repetition_penalty: Repetition penalty parameter
-            do_sample: Whether to use sampling (False for greedy decoding)
         Returns:
             Generated text
         """
@@ -189,7 +182,7 @@ class LLMEngine(BaseEngine):
             logger.warning(f"Model unexpectedly in training mode, resetting to inference mode")
             self.model.eval()
             
-        logger.info(f"Starting text generation, parameters: max_length={max_length}, temperature={temperature}, top_p={top_p}, top_k={top_k}, repetition_penalty={repetition_penalty}, do_sample={do_sample}")
+        logger.info(f"Starting text generation, parameters: max_length={max_length}, sampler={type(sampler).__name__}")
         
         # Encode input text
         input_ids = self.tokenizer.encode(prompt)
@@ -208,42 +201,12 @@ class LLMEngine(BaseEngine):
             logits = self.forward(input_ids, attention_mask)
             next_token_logits = logits[:, -1, :]
             
-            # Apply repetition penalty
-            if repetition_penalty != 1.0:
-                for token_id in set(input_ids[0].tolist()):
-                    if next_token_logits[0, token_id] < 0:
-                        next_token_logits[0, token_id] *= repetition_penalty
-                    else:
-                        next_token_logits[0, token_id] /= repetition_penalty
-            
-            # Apply temperature
-            if temperature > 0:
-                next_token_logits = next_token_logits / temperature
-            
-            # If using sampling
-            if do_sample:
-                # Apply top-k filtering
-                if top_k > 0:
-                    indices_to_remove = torch.topk(next_token_logits, k=top_k)[0][:, -1, None]
-                    next_token_logits[next_token_logits < indices_to_remove] = float('-inf')
-                
-                # Apply top-p sampling
-                if top_p < 1.0:
-                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                    sorted_indices_to_remove[..., 0] = 0
-                    
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    next_token_logits[indices_to_remove] = float('-inf')
-                
-                # Sample next token
-                probs = F.softmax(next_token_logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
+            # Use sampler to generate next token
+            if isinstance(sampler, RepetitionPenaltySampler):
+                # If using repetition penalty sampler, need to pass input_ids
+                next_token = sampler.sample(next_token_logits, input_ids)
             else:
-                # Greedy decoding
-                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                next_token = sampler.sample(next_token_logits)
             
             # If EOS token is generated, stop generation
             if next_token.item() == self.config.eos_token_id:
@@ -253,6 +216,9 @@ class LLMEngine(BaseEngine):
             # Add new token to input sequence
             input_ids = torch.cat([input_ids, next_token], dim=1)
             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token)], dim=1)
+            
+            # Update sampler state
+            sampler.update_state(input_ids)
         
         # Decode generated token sequence, return only the newly generated part
         generated_ids = input_ids[0, input_length:].tolist()

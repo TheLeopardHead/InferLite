@@ -182,13 +182,13 @@ class FusedAttention(nn.Module):
         
         # Check if the number of heads in q and k match, adjust if not
         if q.size(1) != k.size(1):
-            logger.warning(f"Number of heads in q and k don't match: q.shape={q.shape}, k.shape={k.shape}")
+            logger.debug(f"Number of heads in q and k don't match: q.shape={q.shape}, k.shape={k.shape}")
             
             # If q's head count is a multiple of k's (grouped query attention mechanism)
             if q.size(1) % k.size(1) == 0:
                 # Calculate number of Q heads per KV head
                 num_q_per_kv = q.size(1) // k.size(1)
-                logger.info(f"Using grouped query attention: {num_q_per_kv} Q heads per KV head")
+                logger.debug(f"Using grouped query attention: {num_q_per_kv} Q heads per KV head")
                 
                 # Reshape q to match k's head structure
                 q_reshaped = q.view(batch_size, k.size(1), num_q_per_kv, seq_len, self.head_dim)
@@ -228,7 +228,7 @@ class FusedAttention(nn.Module):
                     k_expanded = torch.cat([k.repeat(1, repeat_factor, 1, 1), k[:, :remainder]], dim=1)
                     v_expanded = torch.cat([v.repeat(1, repeat_factor, 1, 1), v[:, :remainder]], dim=1)
                 
-                logger.warning(f"Expanded k and v shapes: k_expanded.shape={k_expanded.shape}, v_expanded.shape={v_expanded.shape}")
+                logger.debug(f"Expanded k and v shapes: k_expanded.shape={k_expanded.shape}, v_expanded.shape={v_expanded.shape}")
                 
                 # Use expanded k and v to calculate attention
                 scores = torch.matmul(q, k_expanded.transpose(-2, -1)) * scale

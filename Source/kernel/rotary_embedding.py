@@ -34,7 +34,7 @@ class RotaryEmbedding(nn.Module):
         t = torch.arange(self.max_position_embeddings, dtype=torch.float32)
         freqs = torch.outer(t, self.inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :])  # [1, 1, seq_len, dim]
+        self.register_buffer("cos_cached", emb.cos()[None, None, :, :])  # [1, 1, max_position_embeddings, dim]
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :])
         logger.debug(f"Building position encoding cache: shape={self.cos_cached.shape}")
         

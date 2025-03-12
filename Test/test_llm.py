@@ -19,7 +19,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 log_file = os.path.join(log_dir, f"test_llm_{timestamp}.log")
 
 # Set up logging, output to both console and file
-setup_logging(log_level="DEBUG", log_file=log_file)
+setup_logging(log_level="INFO", log_file=log_file)
 logger = logging.getLogger(__name__)
 logger.info(f"Logs will be output to: {log_file}")
 
@@ -134,62 +134,61 @@ class TestLLM(unittest.TestCase):
             )
             logger.info(f"Engine creation completed, model inference mode: training={engine.model.training}")
             
+            # Import samplers
+            from Source.sampler import SamplerFactory
+            
             # Test different generation parameters
             prompt = "你好，请介绍一下自己。"
             
             # Test greedy decoding
             logger.info(f"\nTesting greedy decoding:")
             logger.info(f"Input prompt: {prompt}")
+            greedy_sampler = SamplerFactory.create_greedy_sampler()
             greedy_response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=1.0,
-                do_sample=False
+                sampler=greedy_sampler,
+                max_length=50
             )
             logger.info(f"Greedy decoding result: {greedy_response}")
             
             # Test temperature sampling
             logger.info(f"\nTesting temperature sampling (temperature=0.7):")
+            temp_sampler = SamplerFactory.create_temperature_sampler(temperature=0.7)
             temp_response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=0.7,
-                top_p=1.0,
-                do_sample=True
+                sampler=temp_sampler,
+                max_length=50
             )
             logger.info(f"Temperature sampling result: {temp_response}")
             
             # Test top-p sampling
             logger.info(f"\nTesting top-p sampling (top_p=0.9):")
+            top_p_sampler = SamplerFactory.create_nucleus_sampler(p=0.9)
             top_p_response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=1.0,
-                top_p=0.9,
-                do_sample=True
+                sampler=top_p_sampler,
+                max_length=50
             )
             logger.info(f"top-p sampling result: {top_p_response}")
             
             # Test top-k sampling
             logger.info(f"\nTesting top-k sampling (top_k=50):")
+            top_k_sampler = SamplerFactory.create_top_k_sampler(k=50)
             top_k_response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=1.0,
-                top_k=50,
-                do_sample=True
+                sampler=top_k_sampler,
+                max_length=50
             )
             logger.info(f"top-k sampling result: {top_k_response}")
             
             # Test repetition penalty
             logger.info(f"\nTesting repetition penalty (repetition_penalty=1.2):")
+            base_sampler = SamplerFactory.create_combined_sampler(temperature=0.7, top_p=0.9)
+            rep_penalty_sampler = SamplerFactory.add_repetition_penalty(base_sampler, penalty=1.2)
             rep_penalty_response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.2,
-                do_sample=True
+                sampler=rep_penalty_sampler,
+                max_length=50
             )
             logger.info(f"Repetition penalty result: {rep_penalty_response}")
             
@@ -198,11 +197,18 @@ class TestLLM(unittest.TestCase):
             logger.info(f"\nTesting English prompt:")
             logger.info(f"Input prompt: {prompt}")
             
+            # Create sampler using factory config method
+            sampler_config = {
+                'temperature': 0.7,
+                'top_p': 0.9,
+                'do_sample': True
+            }
+            default_sampler = SamplerFactory.create_sampler(sampler_config)
+            
             response = engine.generate(
                 prompt=prompt,
-                max_length=50,
-                temperature=0.7,
-                top_p=0.9
+                sampler=default_sampler,
+                max_length=50
             )
             
             logger.info(f"Model response: {response}")
