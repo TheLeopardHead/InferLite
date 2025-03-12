@@ -139,14 +139,15 @@ class LLMEngine(BaseEngine):
         logger.info(f"Model set to inference mode (model.training={self.model.training})")
     
     @torch.no_grad()
-    def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input_ids, attention_mask=None, causal_mask=None):
         """
-        Execute model forward pass (without gradient calculation)
+        Execute forward pass through the model
         Args:
             input_ids: Input token IDs
-            attention_mask: Attention mask
+            attention_mask: Attention mask (1 for tokens to attend to, 0 for tokens to ignore)
+            causal_mask: Causal attention mask (1 for positions to attend to, 0 for positions to ignore)
         Returns:
-            logits: Model output logits
+            Model output logits
         """
         # Ensure model is in inference mode
         if self.model.training:
@@ -157,11 +158,40 @@ class LLMEngine(BaseEngine):
         batch_size, seq_len = input_ids.shape
         position_ids = torch.arange(seq_len, device=self.device).unsqueeze(0).expand(batch_size, -1)
         
+        # Process masks
+        final_mask = None
+        
+        if attention_mask is not None and causal_mask is not None:
+            # Combine padding mask and causal mask
+            # attention_mask: [batch_size, seq_len] - 1 for tokens to attend to
+            # causal_mask: [1, 1, seq_len, seq_len] - 1 for positions to attend to
+            
+            # First, reshape padding mask to [batch_size, 1, 1, seq_len]
+            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            
+            # Expand padding mask to match causal mask's last dimension
+            # [batch_size, 1, 1, seq_len] -> [batch_size, 1, seq_len, seq_len]
+            expanded_padding_mask = padding_mask.expand(-1, -1, seq_len, -1)
+            
+            # Combine masks - we want a position to be attended to only if:
+            # 1. It's a valid token (padding_mask = 1)
+            # 2. It's a valid causal position (causal_mask = 1)
+            final_mask = expanded_padding_mask * causal_mask
+            logger.debug(f"Combined padding and causal masks: shape={final_mask.shape}")
+        elif attention_mask is not None:
+            # Just use the padding mask, but reshape for the model
+            final_mask = attention_mask
+            logger.debug(f"Using only padding mask: shape={final_mask.shape}")
+        elif causal_mask is not None:
+            # Just use the causal mask
+            final_mask = causal_mask
+            logger.debug(f"Using only causal mask: shape={final_mask.shape}")
+        
         logger.debug(f"Executing forward inference: batch_size={batch_size}, seq_len={seq_len}")
         return self.model(
             input_ids=input_ids,
             position_ids=position_ids,
-            attention_mask=attention_mask
+            attention_mask=final_mask
         )
     
     def generate(self, 
@@ -192,13 +222,22 @@ class LLMEngine(BaseEngine):
         input_length = input_ids.shape[1]
         logger.debug(f"Input prompt length: {input_length} tokens")
         
-        # Create attention mask
+        # Create attention mask (padding mask)
         attention_mask = torch.ones_like(input_ids)
+        
+        # Create causal attention mask
+        seq_len = input_ids.shape[1]
+        # Create lower triangular matrix (causal mask)
+        # 1 means "attend to", 0 means "don't attend to"
+        causal_mask = torch.tril(torch.ones((seq_len, seq_len), device=self.device))
+        # Reshape to [1, 1, seq_len, seq_len] for broadcasting
+        causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+        logger.info(f"Created causal attention mask: shape={causal_mask.shape}")
         
         # Generation loop
         for i in range(max_length):
             # Get model output
-            logits = self.forward(input_ids, attention_mask)
+            logits = self.forward(input_ids, attention_mask, causal_mask)
             next_token_logits = logits[:, -1, :]
             
             # Use sampler to generate next token
@@ -216,6 +255,11 @@ class LLMEngine(BaseEngine):
             # Add new token to input sequence
             input_ids = torch.cat([input_ids, next_token], dim=1)
             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token)], dim=1)
+            
+            # Update causal mask for the new sequence length
+            seq_len = input_ids.shape[1]
+            causal_mask = torch.tril(torch.ones((seq_len, seq_len), device=self.device))
+            causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
             
             # Update sampler state
             sampler.update_state(input_ids)
