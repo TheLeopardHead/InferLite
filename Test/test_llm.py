@@ -225,6 +225,48 @@ class TestLLM(unittest.TestCase):
             import traceback
             logger.error(traceback.format_exc())
             self.fail(f"Text generation test failed: {e}")
+
+
+    def test_long_text_generation(self):
+        """Test long text generation capability"""
+        logger.info("Starting long text generation test")
+        try:
+            logger.info("Creating inference engine...")
+            engine = LLMEngine(
+                model_path=self.model_path,
+                config_path="temp/our_config.json",
+                tokenizer_path=self.tokenizer_path,
+                device="cuda" if torch.cuda.is_available() else "cpu"
+            )
+            
+            # Use a longer prompt text
+            prompt = "Please provide a detailed history of artificial intelligence, from early research to modern large language models."
+            logger.info(f"Input prompt: {prompt}")
+            
+            from Source.sampler import SamplerFactory
+
+            # Use greedy sampling (no randomness)
+            greedy_sampler = SamplerFactory.create_greedy_sampler()
+            
+            # Set a larger maximum length to generate long text
+            long_response = engine.generate(
+                prompt=prompt,
+                sampler=greedy_sampler,
+                max_length=2048  # Generate longer text
+            )
+            
+            logger.info(f"Total length of generated text: {len(long_response)}")
+            logger.info(f"Generated text: {long_response}")
+            
+            # Verify output is not empty and has reasonable length
+            self.assertIsInstance(long_response, str)            
+            logger.info("Long text generation test passed")
+            
+        except Exception as e:
+            logger.error(f"Long text generation test failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            self.fail(f"Long text generation test failed: {e}")
     
     @classmethod
     def tearDownClass(cls):

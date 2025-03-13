@@ -8,6 +8,7 @@ from ..model.llama import LlamaModel
 from ..model.model_config import LlamaConfig
 from ..tokenizer import Tokenizer
 from ..sampler import Sampler, SamplerFactory, RepetitionPenaltySampler
+from ..mem_manage import MemoryMonitor
 
 # Create module-level logger
 logger = logging.getLogger(__name__)
@@ -197,13 +198,17 @@ class LLMEngine(BaseEngine):
     def generate(self, 
                  prompt: str, 
                  sampler: Sampler,
-                 max_length: int = 100) -> str:
+                 max_length: int = 100,
+                 memory_monitor_enabled: bool = False,
+                 memory_monitor_interval: int = 50) -> str:
         """
         Generate text
         Args:
             prompt: Input prompt
             sampler: Sampler instance for token generation
             max_length: Maximum generation length
+            memory_monitor_enabled: Whether to enable memory monitoring
+            memory_monitor_interval: Memory monitoring interval (number of iterations)
         Returns:
             Generated text
         """
@@ -212,7 +217,17 @@ class LLMEngine(BaseEngine):
             logger.warning(f"Model unexpectedly in training mode, resetting to inference mode")
             self.model.eval()
             
-        logger.info(f"Starting text generation, parameters: max_length={max_length}, sampler={type(sampler).__name__}")
+        logger.info(f"Starting text generation, parameters: max_length={max_length}, sampler={type(sampler).__name__}, memory_monitor_enabled={memory_monitor_enabled}")
+        
+        # Initialize memory monitor
+        memory_monitor = None
+        if memory_monitor_enabled and torch.cuda.is_available():
+            memory_monitor = MemoryMonitor(
+                enabled=True,
+                interval=memory_monitor_interval,
+                device=self.device
+            )
+            memory_monitor.start()
         
         # Encode input text
         input_ids = self.tokenizer.encode(prompt)
@@ -236,6 +251,10 @@ class LLMEngine(BaseEngine):
         
         # Generation loop
         for i in range(max_length):
+            # Update memory monitor
+            if memory_monitor:
+                memory_monitor.step(i)
+                
             # Get model output
             logits = self.forward(input_ids, attention_mask, causal_mask)
             next_token_logits = logits[:, -1, :]
@@ -263,6 +282,11 @@ class LLMEngine(BaseEngine):
             
             # Update sampler state
             sampler.update_state(input_ids)
+        
+        # Stop memory monitoring
+        if memory_monitor:
+            memory_stats = memory_monitor.stop()
+            logger.debug(f"Memory monitoring stats: peak_memory={memory_stats['peak_memory']}")
         
         # Decode generated token sequence, return only the newly generated part
         generated_ids = input_ids[0, input_length:].tolist()
